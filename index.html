@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Word2Vec 近邻探索器 · 词向量交互可视化</title>
+<meta name="description" content="纯前端运行的 Word2Vec 词向量近邻探索工具：输入词语与词频阈值，可视化周围词向量热力图、PCA 语义分布与最相似的 5 个词。">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236366F1'/%3E%3Cstop offset='1' stop-color='%2322D3EE'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='%23080D1B'/%3E%3Cpath d='M7 22 L13 10 L19 22 M10 18 h6 M21 10 v12 m0 0 a4 4 0 1 0 0-8' stroke='url(%23g)' stroke-width='2.2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<div class="backdrop" aria-hidden="true">
+  <span class="blob blob-a"></span>
+  <span class="blob blob-b"></span>
+  <span class="blob blob-c"></span>
+  <span class="grid-lines"></span>
+</div>
+
+<!-- ============ 顶部导航栏 ============ -->
+<header class="topbar" id="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="./" aria-label="Word2Vec 近邻探索器首页">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" width="26" height="26">
+          <defs>
+            <linearGradient id="brandGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#6366F1"></stop>
+              <stop offset="55%" stop-color="#8B5CF6"></stop>
+              <stop offset="100%" stop-color="#22D3EE"></stop>
+            </linearGradient>
+          </defs>
+          <path d="M6 24 L13 8 L20 24 M9.2 18.5 h7.6 M24 8 v16 m0 0 a5 5 0 1 0 0-10" fill="none" stroke="url(#brandGrad)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
+      </span>
+      <span class="brand-text">
+        <strong>Word2Vec 近邻探索器</strong>
+        <em>Word Vector Explorer</em>
+      </span>
+    </a>
+
+    <div class="topbar-meta" aria-label="模型规模">
+      <span class="chip chip-static" id="chip-vocab">
+        <i class="dot"></i><b id="meta-vocab">71,292</b> 词
+      </span>
+      <span class="chip chip-static" id="chip-dim">
+        <i class="dot dot-cyan"></i><b id="meta-dim">100</b> 维
+      </span>
+      <span class="chip chip-static hide-sm" id="chip-freq">
+        <i class="dot dot-amber"></i>词频 <b id="meta-freq">5 – 1,061,396</b>
+      </span>
+    </div>
+
+    <nav class="topbar-actions">
+      <button type="button" class="btn btn-ghost" id="btn-about" aria-haspopup="dialog" aria-controls="about-drawer">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"></circle><path d="M12 10.6v6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path><circle cx="12" cy="7.6" r="1.2" fill="currentColor"></circle></svg>
+        关于
+      </button>
+    </nav>
+  </div>
+</header>
+
+<!-- ============ 主体 ============ -->
+<main class="layout">
+
+  <!-- ---------- 左栏：控制台 ---------- -->
+  <aside class="console panel" aria-label="查询控制台">
+    <div class="panel-head">
+      <h2 class="panel-title">查询控制台</h2>
+      <p class="panel-sub">输入词语并设定词频门槛，只有词频达标者参与检索</p>
+    </div>
+
+    <form class="field-group" id="query-form" autocomplete="off" novalidate>
+      <label class="field-label" for="word-input">
+        目标词 <span class="field-label-en">word</span>
+      </label>
+      <div class="input-shell">
+        <span class="input-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="16" height="16"><circle cx="11" cy="11" r="6.2" fill="none" stroke="currentColor" stroke-width="1.9"></circle><path d="M15.6 15.6 20 20" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"></path></svg>
+        </span>
+        <input type="text" id="word-input" name="word" class="input" placeholder="例如 music / computer / history" spellcheck="false" autocapitalize="off" aria-describedby="word-hint">
+      </div>
+      <p class="field-hint" id="word-hint">支持英文与小写形式，回车即可查询</p>
+
+      <label class="field-label" for="freq-input">
+        词频阈值 <span class="field-label-en">min frequency</span>
+      </label>
+      <div class="freq-row">
+        <input type="number" id="freq-input" class="input input-num" min="1" max="1061396" step="1" value="500" inputmode="numeric" aria-describedby="freq-hint">
+        <span class="freq-unit">次</span>
+      </div>
+      <input type="range" id="freq-slider" class="range" min="0" max="1000" step="1" value="500" aria-label="词频阈值滑块（对数刻度）">
+      <div class="range-scale" aria-hidden="true">
+        <span>5</span><span>50</span><span>500</span><span>5k</span><span>50k</span><span>1M</span>
+      </div>
+      <div class="chips" id="freq-chips" role="group" aria-label="常用词频阈值">
+        <button type="button" class="chip chip-btn" data-freq="5">5</button>
+        <button type="button" class="chip chip-btn" data-freq="50">50</button>
+        <button type="button" class="chip chip-btn is-active" data-freq="500">500</button>
+        <button type="button" class="chip chip-btn" data-freq="5000">5000</button>
+      </div>
+      <p class="field-hint" id="freq-hint">仅词频 ≥ 阈值的词会进入相似度检索</p>
+
+      <button type="submit" class="btn btn-primary btn-block" id="btn-search" disabled>
+        <span class="btn-label">开始探索</span>
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      </button>
+    </form>
+
+    <div class="stat-card" aria-live="polite">
+      <span class="stat-label">当前候选词数量</span>
+      <span class="stat-value" id="candidate-count">—</span>
+      <span class="stat-bar"><i id="candidate-bar" style="width:0%"></i></span>
+      <span class="stat-foot" id="candidate-foot">加载模型后可查看</span>
+    </div>
+
+    <div class="console-foot">
+      <span class="state-pill" id="model-state">
+        <i class="pulse"></i><span id="model-state-text">正在加载模型…</span>
+      </span>
+    </div>
+  </aside>
+
+  <!-- ---------- 右栏：结果 ---------- -->
+  <section class="results" aria-label="可视化结果">
+
+    <!-- 加载进度 -->
+    <div class="panel loader-panel" id="loader-panel">
+      <div class="loader-head">
+        <div>
+          <h3 class="panel-title">正在下载向量数据</h3>
+          <p class="panel-sub">首次访问需加载 27.2 MB 原始 float32 向量（无损、未量化），之后会使用浏览器缓存</p>
+        </div>
+        <span class="loader-percent" id="loader-percent">0%</span>
+      </div>
+      <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="loader-progress">
+        <i id="loader-bar"></i>
+      </div>
+      <div class="loader-meta">
+        <span id="loader-detail">准备中…</span>
+        <span id="loader-eta"></span>
+      </div>
+      <div class="skeleton-grid" aria-hidden="true">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+    </div>
+
+    <!-- 状态条 -->
+    <div class="status-strip panel" id="status-strip" hidden>
+      <div class="status-main">
+        <span class="status-tag" id="status-tag">结果</span>
+        <span class="status-text" id="status-text"></span>
+      </div>
+      <div class="status-aside" id="status-aside"></div>
+    </div>
+
+    <!-- 空状态 -->
+    <div class="panel empty-state" id="empty-state">
+      <div class="empty-art" aria-hidden="true">
+        <svg viewBox="0 0 220 120" width="220" height="120">
+          <defs>
+            <linearGradient id="emptyGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#6366F1"></stop>
+              <stop offset="100%" stop-color="#22D3EE"></stop>
+            </linearGradient>
+          </defs>
+          <g fill="none" stroke="url(#emptyGrad)" stroke-width="1.6" opacity=".9">
+            <circle cx="46" cy="60" r="22"></circle>
+            <circle cx="128" cy="38" r="12"></circle>
+            <circle cx="150" cy="84" r="9"></circle>
+            <circle cx="96" cy="94" r="7"></circle>
+            <path d="M64 50 118 40M62 70 142 82M56 78 92 90"></path>
+          </g>
+        </svg>
+      </div>
+      <h3 class="empty-title" id="empty-title">等待你的第一次查询</h3>
+      <p class="empty-desc" id="empty-desc">在左侧输入一个英文词语，设定词频阈值后即可查看它的向量图像与语义近邻。</p>
+      <div class="empty-actions">
+        <button type="button" class="btn btn-ghost" data-sample="music">试试 music</button>
+        <button type="button" class="btn btn-ghost" data-sample="computer">试试 computer</button>
+        <button type="button" class="btn btn-ghost" data-sample="history">试试 history</button>
+      </div>
+    </div>
+
+    <!-- Top5 -->
+    <section class="panel result-panel" id="top5-panel" hidden aria-labelledby="top5-title">
+      <div class="panel-head row">
+        <div>
+          <h3 class="panel-title" id="top5-title">最相似的 5 个词</h3>
+          <p class="panel-sub" id="top5-sub">按余弦相似度排序，已按词频阈值过滤</p>
+        </div>
+        <span class="badge" id="top5-badge">cosine</span>
+      </div>
+      <div class="top5-grid" id="top5-grid"></div>
+    </section>
+
+    <!-- 热力图 -->
+    <section class="panel result-panel" id="heatmap-panel" hidden aria-labelledby="heatmap-title">
+      <div class="panel-head row">
+        <div>
+          <h3 class="panel-title" id="heatmap-title">周围词向量图像</h3>
+          <p class="panel-sub" id="heatmap-sub">每行一个词、每列一个维度，颜色表示该维度的原始数值</p>
+        </div>
+        <div class="panel-tools">
+          <div class="seg" role="group" aria-label="色标值域模式">
+            <button type="button" class="seg-btn is-active" id="btn-domain-fixed">固定值域</button>
+            <button type="button" class="seg-btn" id="btn-domain-auto">自适应</button>
+          </div>
+        </div>
+      </div>
+      <div class="heatmap-wrap" id="heatmap-wrap">
+        <canvas id="heatmap-canvas" width="900" height="600" role="img" aria-label="周围词向量热力图"></canvas>
+      </div>
+      <div class="legend-row">
+        <div class="legend" id="heatmap-legend">
+          <span class="legend-cap" id="legend-min">-2.18</span>
+          <span class="legend-bar"></span>
+          <span class="legend-cap" id="legend-max">2.35</span>
+        </div>
+        <p class="legend-note" id="heatmap-note">悬停查看「词 / 维度 / 数值」，点击左侧词标签可切换查询词</p>
+      </div>
+      <div class="chart-tooltip" id="heatmap-tooltip" hidden></div>
+    </section>
+
+    <!-- 散点图 -->
+    <section class="panel result-panel" id="scatter-panel" hidden aria-labelledby="scatter-title">
+      <div class="panel-head row">
+        <div>
+          <h3 class="panel-title" id="scatter-title">语义分布图（PCA 二维投影）</h3>
+          <p class="panel-sub" id="scatter-sub">对查询词与周围词的 100 维向量做 PCA 降维，展示其相对位置</p>
+        </div>
+        <span class="badge" id="pca-badge">PCA</span>
+      </div>
+      <div class="scatter-wrap" id="scatter-wrap">
+        <svg id="scatter-svg" viewBox="0 0 900 520" preserveAspectRatio="xMidYMid meet" role="img" aria-label="语义分布散点图"></svg>
+      </div>
+      <div class="variance-row" id="variance-row">
+        <span class="variance-item"><i class="variance-dot v1"></i>主成分 1 <b id="var-1">—</b></span>
+        <span class="variance-item"><i class="variance-dot v2"></i>主成分 2 <b id="var-2">—</b></span>
+        <span class="variance-item muted">点大小 = 词频 · 点颜色 = 相似度</span>
+      </div>
+      <div class="chart-tooltip" id="scatter-tooltip" hidden></div>
+    </section>
+
+  </section>
+</main>
+
+<!-- ============ 底部信息栏 ============ -->
+<footer class="footer">
+  <div class="footer-inner">
+    <span class="footer-item">数据来源：<code>vectors.npz</code> · <code>vocab.json</code></span>
+    <span class="footer-sep" aria-hidden="true"></span>
+    <span class="footer-item">71,292 词 × 100 维 float32（无损，未量化）</span>
+    <span class="footer-sep" aria-hidden="true"></span>
+    <span class="footer-item">相似度定义：余弦相似度</span>
+    <span class="footer-sep" aria-hidden="true"></span>
+    <span class="footer-item">筛选规则：仅词频 ≥ 阈值的词参与检索</span>
+    <span class="footer-sep" aria-hidden="true"></span>
+    <span class="footer-item">纯前端运行，无后端请求</span>
+  </div>
+</footer>
+
+<!-- ============ 关于抽屉 ============ -->
+<div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
+<aside class="drawer" id="about-drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" hidden>
+  <div class="drawer-head">
+    <h2 class="panel-title" id="drawer-title">关于与数据说明</h2>
+    <button type="button" class="btn btn-icon" id="btn-drawer-close" aria-label="关闭">
+      <svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg>
+    </button>
+  </div>
+  <div class="drawer-body">
+    <h4>这个工具做什么</h4>
+    <p>输入一个词与一个词频阈值，页面会在浏览器本地完成全部计算：从词表中筛选出词频达标的候选词，计算查询词与每个候选词的余弦相似度，给出最相似的 5 个词，并把查询词与周围词（最多 50 个）的 100 维向量绘制成热力图与 PCA 二维语义分布图。</p>
+    <h4>数据与保真度</h4>
+    <ul>
+      <li>词表规模 <b id="drawer-vocab">71,292</b> 个词，向量维度 <b id="drawer-dim">100</b>。</li>
+      <li>向量以原始 <b>float32</b> 无损传输与加载，<b>未做任何量化、降精度或归一化改写</b>；余弦相似度在运行时用原始数值计算。</li>
+      <li>数据文件 <code>data/vectors.bin</code> 约 27.2 MB，首次访问需下载，之后依赖浏览器缓存。</li>
+    </ul>
+    <h4>筛选规则</h4>
+    <ul>
+      <li>阈值只作用于候选近邻词：只有词频 ≥ 阈值的词才会出现在结果中。</li>
+      <li>查询词本身只要存在于词表即可检索，不受阈值限制。</li>
+      <li>结果不会包含查询词自身；<code>&lt;unk&gt;</code>（词频 1）与 <code>&lt;pad&gt;</code>（词频 0）通常在阈值 ≥ 5 时被自然过滤。</li>
+    </ul>
+    <h4>可视化读法</h4>
+    <ul>
+      <li><b>热力图</b>：行是词语、列是 100 个维度，颜色映射该维度的原始数值（蓝=低、红=高）。固定值域模式下不同查询之间颜色可比。</li>
+      <li><b>散点图</b>：对这批向量做均值中心化 + 协方差矩阵 Jacobi 特征分解，取前两大主成分投影到二维，图下方给出解释方差比。</li>
+    </ul>
+    <h4>部署</h4>
+    <p>整个站点为纯静态资源，可直接托管在 GitHub Pages；推送步骤见仓库 <code>README.md</code>。</p>
+  </div>
+</aside>
+
+<noscript>
+  <div class="noscript">该页面需要启用 JavaScript 才能运行词向量计算与可视化。</div>
+</noscript>
+
+<script type="module" src="assets/js/main.js"></script>
+</body>
+</html>

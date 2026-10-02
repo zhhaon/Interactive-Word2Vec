@@ -1,0 +1,21 @@
+# ---- 原始数据（体积大，不入库；data/ 产物由 scripts/build_data.py 生成）----
+vectors.npz
+vocab.json
+
+# ---- 构建/部署中间产物 ----
+_site/
+.playwright-cli/
+shot-*.png
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
